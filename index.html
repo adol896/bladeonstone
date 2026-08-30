@@ -8,7 +8,7 @@
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; transition: background-color 1s ease; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-        #ui-overlay { position: absolute; top: 0; right: 0; z-index: 10; padding: 1.5rem; pointer-events: none; }
+        #ui-overlay { position: absolute; bottom: 1.5rem; left: 1.5rem; z-index: 10; padding: 0; pointer-events: none; }
         .interactive { pointer-events: auto; }
         #loader { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #f8fafc; transition: opacity 0.8s ease; }
     </style>
@@ -31,15 +31,18 @@
     <!-- 3Dキャンバスコンテナ -->
     <div id="canvas-container"></div>
 
-    <!-- 右上のミニマルなUI -->
+    <!-- 左下のUIパネル -->
     <div id="ui-overlay">
         <div class="interactive bg-white/20 backdrop-blur-md border border-white/40 px-4 py-3 rounded-xl shadow-lg text-slate-800 text-xs max-w-xs transition-all">
-            <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center justify-between mb-2">
                 <span id="ui-title" class="font-bold text-sky-900 tracking-wider">聖剣の祭壇</span>
-                <button id="reset-btn" class="text-slate-600 hover:text-slate-900 text-[10px] underline cursor-pointer hidden">リセット</button>
+                <div id="time-badge" class="text-[10px] font-mono text-sky-800 bg-white/40 px-2 py-0.5 rounded"></div>
             </div>
-            <p id="status-text" class="text-slate-700 leading-relaxed">剣をクリックして、音声で願いを伝えてください。</p>
-            <div id="time-badge" class="mt-2 text-[10px] font-mono text-sky-800 bg-white/40 px-2 py-0.5 rounded inline-block"></div>
+            <p id="status-text" class="text-slate-700 leading-relaxed mb-3">下のボタンを押して、音声で願いを伝えてください。</p>
+            <div class="flex items-center gap-2">
+                <button id="action-btn" class="bg-sky-600 hover:bg-sky-700 text-white font-bold px-4 py-2 rounded-lg shadow transition cursor-pointer text-xs flex-1">願い事を言う</button>
+                <button id="reset-btn" class="bg-slate-300 hover:bg-slate-400 text-slate-700 px-3 py-2 rounded-lg shadow transition cursor-pointer text-xs hidden">リセット</button>
+            </div>
         </div>
     </div>
 
@@ -281,7 +284,6 @@
                     if (node.material) {
                         node.material.roughness = 0.2;
                         node.material.metalness = 0.85;
-                        // emissiveを切ることで、剣本来の色や金属の質感を完全に担保する
                         node.material.emissive = new THREE.Color(0x000000);
                         node.material.emissiveIntensity = 0;
                     }
@@ -301,14 +303,19 @@
         let isListening = false;
 
         const statusText = document.getElementById('status-text');
+        const actionBtn = document.getElementById('action-btn');
         const resetBtn = document.getElementById('reset-btn');
 
-        function updateUI(message, showReset = false) {
+        function updateUI(message, stateType) {
             statusText.textContent = message;
-            if (showReset) {
-                resetBtn.classList.remove('hidden');
-            } else {
+            if (stateType === 'input') {
+                actionBtn.textContent = "願い事を言う";
+                actionBtn.className = "bg-sky-600 hover:bg-sky-700 text-white font-bold px-4 py-2 rounded-lg shadow transition cursor-pointer text-xs flex-1";
                 resetBtn.classList.add('hidden');
+            } else if (stateType === 'ready') {
+                actionBtn.textContent = "願い事を聞く";
+                actionBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg shadow transition cursor-pointer text-xs flex-1";
+                resetBtn.classList.remove('hidden');
             }
         }
 
@@ -326,12 +333,12 @@
                 currentWish = speechResult;
                 hasWish = true;
                 isListening = false;
-                updateUI(`願いが宿りました: 「${currentWish}」 (再び剣に触れると聴けます)`, true);
+                updateUI(`願いが宿りました: 「${currentWish}」`, 'ready');
             };
 
             recognition.onerror = () => {
                 isListening = false;
-                updateUI('聞き取れませんでした。もう一度剣をクリックしてください。');
+                updateUI('聞き取れませんでした。もう一度ボタンを押してください。', 'input');
             };
 
             recognition.onend = () => {
@@ -353,12 +360,16 @@
                     utterance.voice = maleVoice;
                 }
 
-                utterance.onstart = () => updateUI('聖剣が静かに語りかけています...');
-                utterance.onend = () => updateUI(`今日の願い: 「${currentWish}」 (再度クリックで再読込)`, true);
+                utterance.onstart = () => {
+                    statusText.textContent = '聖剣が静かに語りかけています...';
+                };
+                utterance.onend = () => {
+                    statusText.textContent = `今日の願い: 「${currentWish}」`;
+                };
 
                 window.speechSynthesis.speak(utterance);
             } else {
-                updateUI('お使いのブラウザは音声合成に対応していません。');
+                updateUI('お使いのブラウザは音声合成に対応していません。', 'ready');
             }
         }
 
@@ -368,54 +379,38 @@
             };
         }
 
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        window.addEventListener('click', (event) => {
-            if (event.target.closest('#ui-overlay')) return;
-
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-            raycaster.setFromCamera(mouse, camera);
-
-            let hitSword = false;
-            if (loadedSword) {
-                const intersects = raycaster.intersectObject(loadedSword, true);
-                if (intersects.length > 0) {
-                    hitSword = true;
-                }
-            }
-
-            if (hitSword || raycaster.intersectObject(altarGroup, true).length > 0) {
-                if (!hasWish) {
-                    if (recognition && !isListening) {
-                        try {
-                            isListening = true;
-                            updateUI('お聴きしています... 願いを声に出して話してください。');
-                            recognition.start();
-                        } catch (e) {
-                            isListening = false;
-                            updateUI('音声認識の初期化に失敗しました。');
-                        }
-                    } else if (!recognition) {
-                        const manualWish = prompt("【聖剣の試練】願い事を入力してください:");
-                        if (manualWish) {
-                            currentWish = manualWish;
-                            hasWish = true;
-                            updateUI(`願いが宿りました: 「${currentWish}」`, true);
-                        }
+        // ボタンのクリックイベントによる操作
+        actionBtn.addEventListener('click', () => {
+            if (!hasWish) {
+                if (recognition && !isListening) {
+                    try {
+                        isListening = true;
+                        statusText.textContent = 'お聴きしています... 願いを声に出して話してください。';
+                        recognition.start();
+                    } catch (e) {
+                        isListening = false;
+                        statusText.textContent = '音声認識の初期化に失敗しました。';
                     }
-                } else {
-                    speakWish(currentWish);
+                } else if (!recognition) {
+                    const manualWish = prompt("【聖剣の試練】願い事を入力してください:");
+                    if (manualWish) {
+                        currentWish = manualWish;
+                        hasWish = true;
+                        updateUI(`願いが宿りました: 「${currentWish}」`, 'ready');
+                    }
                 }
+            } else {
+                speakWish(currentWish);
             }
         });
 
         resetBtn.addEventListener('click', () => {
             hasWish = false;
             currentWish = "";
-            updateUI('願いがリセットされました。再び剣をクリックして新しい願いをどうぞ。');
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+            updateUI('願いがリセットされました。ボタンを押して新しい願いをどうぞ。', 'input');
         });
 
         // アニメーションループ
