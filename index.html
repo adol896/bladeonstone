@@ -3,73 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>聖剣の祭壇 - 幻想の森</title>
+    <title>聖剣の神殿 - 時移りゆく森</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #87ceeb; font-family: 'Inter', sans-serif; }
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; transition: background-color 1s ease; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         #ui-overlay { position: absolute; top: 0; right: 0; z-index: 10; padding: 1.5rem; pointer-events: none; }
         .interactive { pointer-events: auto; }
-        #loader { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #87ceeb; z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #2d3748; transition: opacity 0.8s ease; }
+        #loader { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #f8fafc; transition: opacity 0.8s ease; }
     </style>
-    <!-- Three.js and Addons -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
 </head>
 <body>
 
-    <!-- ローディング画面 -->
     <div id="loader">
-        <div class="text-2xl font-bold tracking-widest mb-3 text-emerald-800">MYSTICAL FOREST</div>
-        <div class="w-48 h-1.5 bg-gray-300 rounded-full overflow-hidden">
-            <div id="progress-bar" class="w-0 h-full bg-emerald-600 transition-all duration-200"></div>
+        <div id="loader-title" class="text-2xl font-bold tracking-widest mb-3 text-sky-400">SANCTUARY OF THE SWORD</div>
+        <div class="w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div id="progress-bar" class="w-0 h-full bg-sky-400 transition-all duration-200"></div>
         </div>
-        <p id="loader-text" class="text-xs text-gray-600 mt-2 font-mono">Loading sanctuary... (0%)</p>
+        <p id="loader-text" class="text-xs text-slate-400 mt-2 font-mono">Loading assets... (0%)</p>
     </div>
 
-    <!-- 3Dキャンバスコンテナ -->
     <div id="canvas-container"></div>
 
-    <!-- 右上のミニマルなUI -->
     <div id="ui-overlay">
-        <div class="interactive bg-white/30 backdrop-blur-md border border-white/50 px-4 py-3 rounded-xl shadow-lg text-slate-800 text-xs max-w-xs transition-all">
+        <div class="interactive bg-white/20 backdrop-blur-md border border-white/40 px-4 py-3 rounded-xl shadow-lg text-slate-800 text-xs max-w-xs transition-all">
             <div class="flex items-center justify-between mb-1">
-                <span class="font-bold text-emerald-900 tracking-wider" id="time-label">聖剣の祭壇</span>
+                <span id="ui-title" class="font-bold text-sky-900 tracking-wider">聖剣の祭壇</span>
                 <button id="reset-btn" class="text-slate-600 hover:text-slate-900 text-[10px] underline cursor-pointer hidden">リセット</button>
             </div>
             <p id="status-text" class="text-slate-700 leading-relaxed">剣をクリックして、音声で願いを伝えてください。</p>
+            <div id="time-badge" class="mt-2 text-[10px] font-mono text-sky-800 bg-white/40 px-2 py-0.5 rounded inline-block"></div>
         </div>
     </div>
 
     <script>
-        // 時間帯の判定 (朝: 5-10, 昼: 10-17, 夕方: 17-19, 夜: 19-5)
+        // 時間帯の判定 (朝 / 昼 / 夕方 / 夜)
         const currentHour = new Date().getHours();
-        let timeTheme = 'day';
-        if (currentHour >= 5 && currentHour < 10) timeTheme = 'morning';
-        else if (currentHour >= 10 && currentHour < 17) timeTheme = 'day';
-        else if (currentHour >= 17 && currentHour < 19) timeTheme = 'evening';
-        else timeTheme = 'night';
+        let timeState = 'day';
+        let themeConfig = {};
 
-        const themes = {
-            morning: { sky: 0xdceaf5, fog: 0xdceaf5, sunColor: 0xfff5e6, sunIntensity: 1.8, ambientColor: 0xdbeafe, ambientIntensity: 1.0, label: '朝の聖域' },
-            day:     { sky: 0x72bcd5, fog: 0xa1d4e6, sunColor: 0xffffff, sunIntensity: 2.2, ambientColor: 0xe0f2fe, ambientIntensity: 1.2, label: '昼の聖域' },
-            evening: { sky: 0xf49f71, fog: 0xdb8160, sunColor: 0xff7b00, sunIntensity: 1.6, ambientColor: 0xffedd5, ambientIntensity: 0.8, label: '夕暮れの聖域' },
-            night:   { sky: 0x050b14, fog: 0x0a1628, sunColor: 0x8cb4ff, sunIntensity: 0.8, ambientColor: 0x0a1628, ambientIntensity: 0.5, label: '夜の聖域' }
-        };
-        const activeTheme = themes[timeTheme];
-        document.getElementById('time-label').textContent = activeTheme.label;
+        if (currentHour >= 5 && currentHour < 10) {
+            timeState = 'morning';
+            themeConfig = { name: '朝の静寂', bg: 0xdceaf5, fog: 0xdceaf5, ambient: 0xdbeafe, sun: 0xfffbeb, sunIntensity: 2.2, ground: 0x3b5842, loaderBg: '#d8e8f8' };
+        } else if (currentHour >= 10 && currentHour < 17) {
+            timeState = 'day';
+            themeConfig = { name: '青空の昼', bg: 0x38bdf8, fog: 0xbae6fd, ambient: 0xe0f2fe, sun: 0xffffff, sunIntensity: 2.6, ground: 0x2d5a3f, loaderBg: '#38bdf8' };
+        } else if (currentHour >= 17 && currentHour < 19) {
+            timeState = 'evening';
+            themeConfig = { name: '夕暮れの黄昏', bg: 0xfdba74, fog: 0xfed7aa, ambient: 0xffedd5, sun: 0xf97316, sunIntensity: 2.0, ground: 0x4a4033, loaderBg: '#f97316' };
+        } else {
+            timeState = 'night';
+            themeConfig = { name: '夜の神秘', bg: 0x0f172a, fog: 0x1e293b, ambient: 0x1e3a8a, sun: 0x93c5fd, sunIntensity: 0.9, ground: 0x1a2e23, loaderBg: '#0f172a' };
+        }
+
+        document.getElementById('loader').style.background = themeConfig.loaderBg;
+        document.getElementById('time-badge').textContent = `現在のお時間: ${themeConfig.name}`;
 
         // シーン、カメラ、レンダラーの初期化
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(activeTheme.sky);
-        scene.fog = new THREE.FogExp2(activeTheme.fog, 0.02);
+        scene.background = new THREE.Color(themeConfig.bg);
+        scene.fog = new THREE.FogExp2(themeConfig.fog, 0.025);
 
         const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 2.5, 7);
@@ -80,7 +77,7 @@
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.2;
+        renderer.toneMappingExposure = 1.1;
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -91,73 +88,41 @@
         controls.maxDistance = 15;
         controls.target.set(0, 1.0, 0);
 
-        // ポストプロセス（ブルーム効果で緑の発光を美しく表現）
-        const renderScene = new THREE.RenderPass(scene, camera);
-        const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.7, 0.4, 0.8);
-        const composer = new THREE.EffectComposer(renderer);
-        composer.addPass(renderScene);
-        composer.addPass(bloomPass);
-
         // ライティング
-        const ambientLight = new THREE.AmbientLight(activeTheme.ambientColor, activeTheme.ambientIntensity);
+        const ambientLight = new THREE.AmbientLight(themeConfig.ambient, 1.2);
         scene.add(ambientLight);
 
-        const sunLight = new THREE.DirectionalLight(activeTheme.sunColor, activeTheme.sunIntensity);
+        const sunLight = new THREE.DirectionalLight(themeConfig.sun, themeConfig.sunIntensity);
         sunLight.position.set(25, 35, 20);
         sunLight.castShadow = true;
         sunLight.shadow.mapSize.width = 2048;
         sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 100;
+        const d = 20;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
         sunLight.shadow.bias = -0.0005;
         scene.add(sunLight);
 
-        // --- プロシージャルテクスチャの生成（地面・石） ---
-        function createGrassTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512; canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = timeTheme === 'night' ? '#142618' : '#315c2d';
-            ctx.fillRect(0, 0, 512, 512);
-            for (let i = 0; i < 25000; i++) {
-                ctx.fillStyle = Math.random() > 0.5 ? '#3e7a38' : '#22401e';
-                ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 5);
-            }
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(15, 15);
-            return texture;
-        }
-
-        function createStoneTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512; canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#646f78';
-            ctx.fillRect(0, 0, 512, 512);
-            for (let i = 0; i < 8000; i++) {
-                ctx.fillStyle = Math.random() > 0.5 ? '#4b555e' : '#7d8790';
-                ctx.fillRect(Math.random() * 512, Math.random() * 512, 3, 3);
-            }
-            return new THREE.CanvasTexture(canvas);
-        }
-
-        const grassTex = createGrassTexture();
-        const stoneTex = createStoneTexture();
-
-        // 地面の作成
+        // 地面の作成（草地）
         const groundGeo = new THREE.PlaneGeometry(120, 120, 48, 48);
         const pos = groundGeo.attributes.position;
         for (let i = 0; i < pos.count; i++) {
             const vx = pos.getX(i);
             const vy = pos.getY(i);
-            pos.setZ(i, Math.sin(vx * 0.08) * Math.cos(vy * 0.08) * 0.4);
+            const z = Math.sin(vx * 0.08) * Math.cos(vy * 0.08) * 0.4;
+            pos.setZ(i, z);
         }
         groundGeo.computeVertexNormals();
 
         const groundMat = new THREE.MeshStandardMaterial({
-            map: grassTex,
-            roughness: 0.85,
-            metalness: 0.05
+            color: themeConfig.ground,
+            roughness: 0.8,
+            metalness: 0.1,
+            flatShading: true
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
@@ -167,31 +132,33 @@
         // 中央の石の祭壇の作成
         const altarGroup = new THREE.Group();
         const rockMat = new THREE.MeshStandardMaterial({
-            map: stoneTex,
+            color: 0x5a6570,
             roughness: 0.7,
-            metalness: 0.1
+            metalness: 0.2,
+            flatShading: true
         });
 
-        const rockGeo = new THREE.CylinderGeometry(1.1, 1.6, 0.9, 8);
+        const rockGeo = new THREE.CylinderGeometry(1.0, 1.5, 0.9, 8);
         const rock = new THREE.Mesh(rockGeo, rockMat);
         rock.position.y = 0.45;
         rock.castShadow = true;
         rock.receiveShadow = true;
         altarGroup.add(rock);
 
-        // 祭壇の周りに小さな石や草を生やす
-        for (let i = 0; i < 8; i++) {
-            const angle = (i / 8) * Math.PI * 2;
-            const smallRockGeo = new THREE.DodecahedronGeometry(0.2 + Math.random() * 0.2, 1);
-            const smallRock = new THREE.Mesh(smallRockGeo, rockMat);
-            smallRock.position.set(Math.cos(angle) * 1.3, 0.15, Math.sin(angle) * 1.3);
-            smallRock.rotation.set(Math.random(), Math.random(), Math.random());
-            smallRock.castShadow = true;
-            altarGroup.add(smallRock);
+        // 祭壇周辺の小石のディテール追加
+        for (let i = 0; i < 16; i++) {
+            const sGeo = new THREE.DodecahedronGeometry(0.1 + Math.random() * 0.18, 0);
+            const sMesh = new THREE.Mesh(sGeo, rockMat);
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 1.1 + Math.random() * 1.5;
+            sMesh.position.set(Math.cos(angle) * dist, 0.1, Math.sin(angle) * dist);
+            sMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            sMesh.castShadow = true;
+            altarGroup.add(sMesh);
         }
         scene.add(altarGroup);
 
-        // 森の木々を生成
+        // 森の木々を生成する関数
         function createTree() {
             const treeGroup = new THREE.Group();
             const trunkGeo = new THREE.CylinderGeometry(0.25, 0.5, 3.5, 6);
@@ -202,14 +169,16 @@
             treeGroup.add(trunk);
 
             const leafMat = new THREE.MeshStandardMaterial({
-                color: timeTheme === 'night' ? 0x153224 : 0x244a33,
+                color: timeState === 'night' ? 0x1b382b : 0x2d4f3c,
                 roughness: 0.75,
-                metalness: 0.05
+                metalness: 0.05,
+                flatShading: true
             });
 
             for (let i = 0; i < 3; i++) {
                 const radius = 2.0 - i * 0.45;
-                const coneGeo = new THREE.ConeGeometry(radius, 2.2, 5);
+                const height = 2.2;
+                const coneGeo = new THREE.ConeGeometry(radius, height, 5);
                 const cone = new THREE.Mesh(coneGeo, leafMat);
                 cone.position.y = 3.0 + i * 1.3;
                 cone.castShadow = true;
@@ -218,7 +187,9 @@
             return treeGroup;
         }
 
-        for (let i = 0; i < 60; i++) {
+        // 周囲に木々を配置
+        const treeCount = 60;
+        for (let i = 0; i < treeCount; i++) {
             const tree = createTree();
             const angle = Math.random() * Math.PI * 2;
             const radius = 4 + Math.random() * 40;
@@ -233,29 +204,39 @@
             scene.add(tree);
         }
 
-        // --- 複数の青い光球（妖精）の生成 ---
+        // 複数の光る青い妖精（光球）の追加
         const fairies = [];
-        const fairyGeo = new THREE.SphereGeometry(0.08, 16, 16);
-        const fairyMat = new THREE.MeshBasicMaterial({ color: 0x00f2ff });
+        const fairyCount = 14;
+        const fairyGroup = new THREE.Group();
+        const fairyGeo = new THREE.SphereGeometry(0.07, 16, 16);
+        const fairyMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.85
+        });
 
-        for (let i = 0; i < 6; i++) {
-            const fairyGroup = new THREE.Group();
-            const mesh = new THREE.Mesh(fairyGeo, fairyMat);
+        for (let i = 0; i < fairyCount; i++) {
+            const mesh = new THREE.Mesh(fairyGeo, fairyMat.clone());
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 1.2 + Math.random() * 2.8;
+            const height = 0.8 + Math.random() * 2.2;
+            mesh.position.set(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
+            
+            // 小さなポイントライトを妖精に持たせる
+            const fLight = new THREE.PointLight(0x38bdf8, 0.8, 3);
+            mesh.add(fLight);
+
             fairyGroup.add(mesh);
-
-            // 妖精ごとのポイントライト
-            const fLight = new THREE.PointLight(0x00f2ff, 1.5, 3);
-            fairyGroup.add(fLight);
-
-            scene.add(fairyGroup);
             fairies.push({
-                group: fairyGroup,
-                angle: (i / 6) * Math.PI * 2,
-                radius: 1.8 + Math.random() * 1.5,
-                speed: 0.8 + Math.random() * 0.5,
-                yOffset: 1.0 + Math.random() * 1.5
+                mesh: mesh,
+                baseAngle: angle,
+                radius: radius,
+                speed: 0.4 + Math.random() * 0.8,
+                heightOffset: height,
+                verticalSpeed: 1.2 + Math.random() * 2.0
             });
         }
+        scene.add(fairyGroup);
 
         // GLBモデル（剣: psword.glb）の読み込み
         let loadedSword = null;
@@ -267,34 +248,35 @@
         manager.onProgress = function (url, itemsLoaded, itemsTotal) {
             const progress = (itemsLoaded / itemsTotal) * 100;
             progressBar.style.width = progress + '%';
-            loaderText.textContent = `Loading sanctuary... (${Math.round(progress)}%)`;
+            loaderText.textContent = `Loading assets... (${Math.round(progress)}%)`;
         };
 
         manager.onLoad = function () {
             loaderScreen.style.opacity = '0';
-            setTimeout(() => { loaderScreen.style.display = 'none'; }, 800);
+            setTimeout(() => {
+                loaderScreen.style.display = 'none';
+            }, 800);
         };
 
         const loader = new THREE.GLTFLoader(manager);
         loader.load('psword.glb', function (gltf) {
             loadedSword = gltf.scene;
             
-            // 【要望対応】深く刺さりすぎず、先端が浅く垂直に真っ直ぐ刺さるように位置調整
-            loadedSword.scale.set(2.0, 2.0, 2.0);
-            loadedSword.position.set(0, 0.9, 0); // 祭壇の上面に合わせた浅い刺さり具合
-            loadedSword.rotation.set(0, 0, 0); // 垂直真っ直ぐ固定・微動だにしない
+            // 剣が刺さりすぎないように位置を少し上に調整（垂直固定）
+            loadedSword.scale.set(2.2, 2.2, 2.2);
+            loadedSword.position.set(0, 1.15, 0);
+            loadedSword.rotation.set(0, 0, 0);
 
-            // 【要望対応】剣が暗くならないよう光度を上げ、エッジ・模様を緑色に発光させる
             loadedSword.traverse((node) => {
                 if (node.isMesh) {
                     node.castShadow = true;
                     node.receiveShadow = true;
                     if (node.material) {
-                        node.material.roughness = 0.2;
+                        node.material.roughness = 0.15;
                         node.material.metalness = 0.9;
-                        // 緑色のエッジ発光（emissive）を付与し、ブルーム効果で光らせる
-                        node.material.emissive = new THREE.Color(0x00ff66);
-                        node.material.emissiveIntensity = 0.5;
+                        // 剣の素体自体の光度を上げつつ、エッジ（発光色）を緑色に美しく発光させる
+                        node.material.emissive = new THREE.Color(0x00ff88);
+                        node.material.emissiveIntensity = 0.4;
                     }
                 }
             });
@@ -302,11 +284,11 @@
             scene.add(loadedSword);
         }, undefined, function (error) {
             console.error('An error happened while loading psword.glb:', error);
-            loaderText.textContent = 'Error loading psword.glb. Check file path.';
+            loaderText.textContent = 'Error loading psword.glb. Please check file path.';
             progressBar.style.backgroundColor = '#ef4444';
         });
 
-        // --- 音声認識 & 音声合成インタラクション ---
+        // --- 音声認識 & 音声合成インタラクション機能 ---
         let hasWish = false;
         let currentWish = "";
         let isListening = false;
@@ -316,8 +298,11 @@
 
         function updateUI(message, showReset = false) {
             statusText.textContent = message;
-            if (showReset) resetBtn.classList.remove('hidden');
-            else resetBtn.classList.add('hidden');
+            if (showReset) {
+                resetBtn.classList.remove('hidden');
+            } else {
+                resetBtn.classList.add('hidden');
+            }
         }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -330,13 +315,21 @@
             recognition.maxAlternatives = 1;
 
             recognition.onresult = (event) => {
-                currentWish = event.results[0][0].transcript;
+                const speechResult = event.results[0][0].transcript;
+                currentWish = speechResult;
                 hasWish = true;
                 isListening = false;
                 updateUI(`願いが宿りました: 「${currentWish}」 (再び剣に触れると聴けます)`, true);
             };
-            recognition.onerror = () => { isListening = false; updateUI('聞き取れませんでした。もう一度剣をクリックしてください。'); };
-            recognition.onend = () => { isListening = false; };
+
+            recognition.onerror = () => {
+                isListening = false;
+                updateUI('聞き取れませんでした。もう一度剣をクリックしてください。');
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+            };
         }
 
         function speakWish(text) {
@@ -344,24 +337,30 @@
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(`今日の願い事は、「${text}」だな。しかと聞き届けた。`);
                 utterance.lang = 'ja-JP';
-                utterance.pitch = 0.55; // ダンディな低い男の声
+                utterance.pitch = 0.55;
                 utterance.rate = 0.92;
 
                 const voices = window.speechSynthesis.getVoices();
-                const maleVoice = voices.find(v => v.lang.includes('ja') && (v.name.includes('Male') || v.name.includes('男') || v.name.includes('Google 日本語')));
-                if (maleVoice) utterance.voice = maleVoice;
+                const maleVoice = voices.find(v => v.lang.includes('ja') && (v.name.includes('Male') || v.name.includes('男') || v.name.includes('Ichiro') || v.name.includes('Google 日本語')));
+                if (maleVoice) {
+                    utterance.voice = maleVoice;
+                }
 
                 utterance.onstart = () => updateUI('聖剣が静かに語りかけています...');
                 utterance.onend = () => updateUI(`今日の願い: 「${currentWish}」 (再度クリックで再読込)`, true);
+
                 window.speechSynthesis.speak(utterance);
+            } else {
+                updateUI('お使いのブラウザは音声合成に対応していません。');
             }
         }
 
         if ('speechSynthesis' in window) {
-            window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
         }
 
-        // クリック判定
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
@@ -370,12 +369,15 @@
 
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
             raycaster.setFromCamera(mouse, camera);
 
             let hitSword = false;
             if (loadedSword) {
                 const intersects = raycaster.intersectObject(loadedSword, true);
-                if (intersects.length > 0) hitSword = true;
+                if (intersects.length > 0) {
+                    hitSword = true;
+                }
             }
 
             if (hitSword || raycaster.intersectObject(altarGroup, true).length > 0) {
@@ -387,6 +389,7 @@
                             recognition.start();
                         } catch (e) {
                             isListening = false;
+                            updateUI('音声認識の初期化に失敗しました。');
                         }
                     } else if (!recognition) {
                         const manualWish = prompt("【聖剣の試練】願い事を入力してください:");
@@ -413,19 +416,19 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
             const elapsedTime = clock.getElapsedTime();
 
-            // 妖精（青い光球）をふわふわと周回させるアニメーション
+            // 妖精をふわふわと飛び回らせるアニメーション
             fairies.forEach((fairy, index) => {
-                fairy.angle += fairy.speed * 0.01;
-                const x = Math.cos(fairy.angle) * fairy.radius;
-                const z = Math.sin(fairy.angle) * fairy.radius;
-                const y = fairy.yOffset + Math.sin(elapsedTime * 2 + index) * 0.2;
-                fairy.group.position.set(x, y, z);
+                const angle = fairy.baseAngle + elapsedTime * fairy.speed * 0.4;
+                fairy.mesh.position.x = Math.cos(angle) * fairy.radius;
+                fairy.mesh.position.z = Math.sin(angle) * fairy.radius;
+                fairy.mesh.position.y = fairy.heightOffset + Math.sin(elapsedTime * fairy.verticalSpeed + index) * 0.4;
             });
 
             controls.update();
-            composer.render();
+            renderer.render(scene, camera);
         }
 
         animate();
@@ -434,9 +437,7 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            composer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
 </body>
 </html>
-
