@@ -84,7 +84,7 @@
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.1;
+        renderer.toneMappingExposure = 1.2;
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -96,7 +96,7 @@
         controls.target.set(0, 1.0, 0);
 
         // ライティング
-        const ambientLight = new THREE.AmbientLight(themeConfig.ambient, 1.2);
+        const ambientLight = new THREE.AmbientLight(themeConfig.ambient, 1.4);
         scene.add(ambientLight);
 
         const sunLight = new THREE.DirectionalLight(themeConfig.sun, themeConfig.sunIntensity);
@@ -272,18 +272,23 @@
             loadedSword.position.set(0, 1.15, 0);
             loadedSword.rotation.set(0, 0, 0);
 
-            // 剣専用の緑色ポイントライトを近くに配置し、剣自体の金属色と質感をしっかり残す
-            const swordLight = new THREE.PointLight(0x00ffaa, 1.5, 3.5);
-            swordLight.position.set(0, 0.4, 0);
+            // 自己発光（emissive）をなくし、代わりに明るい白色〜自然な光のポイントライトで剣本来の色と金属質感をハッキリ美しく照らす
+            const swordLight = new THREE.PointLight(0xffffff, 3.5, 4.5);
+            swordLight.position.set(0, 0.5, 0.5);
             loadedSword.add(swordLight);
+
+            const swordFillLight = new THREE.PointLight(0xdbeafe, 2.0, 4.0);
+            swordFillLight.position.set(0, 0.5, -0.5);
+            loadedSword.add(swordFillLight);
 
             loadedSword.traverse((node) => {
                 if (node.isMesh) {
                     node.castShadow = true;
                     node.receiveShadow = true;
                     if (node.material) {
-                        node.material.roughness = 0.2;
-                        node.material.metalness = 0.85;
+                        node.material.roughness = 0.25;
+                        node.material.metalness = 0.8;
+                        // 自己発光を切ることで、元々のモデルのカラーや質感を完全に保持する
                         node.material.emissive = new THREE.Color(0x000000);
                         node.material.emissiveIntensity = 0;
                     }
